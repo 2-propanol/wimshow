@@ -15,19 +15,18 @@
       const url = new URL(window.location.href);
       const targetUrl = url.searchParams.get('SocketUrl') ?? 'ws://localhost:9998';
       const startSocket = () => {
-        let webSocket = new WebSocket(targetUrl);
+        let socket = new WebSocket(targetUrl);
 
-        // webSocket.onopen = () =>
-        //   (document.body.style.backgroundImage = 'url(waiting.png)');
+        socket.onopen = () => socket.send('receiver');
 
-        webSocket.onmessage = (message) => {
+        socket.onmessage = (message) => {
           // `message.data` is `url(data:image/***;base64,***)`
           // This code is vulnerable!
           document.body.style.backgroundImage = message.data;
-          webSocket.send('rendered');
+          socket.send('rendered');
         };
 
-        webSocket.onclose = () => {
+        socket.onclose = () => {
           document.body.style.backgroundImage = 'url(waiting.png)';
           // Attempt to reconnect every 5 seconds.
           setTimeout(startSocket, 5000);
@@ -35,8 +34,8 @@
 
         window.onbeforeunload = () => {
           // Disabling onclose handler first.
-          webSocket.onclose = () => {};
-          webSocket.close(1000, 'Window unloaded.');
+          socket.onclose = null;
+          socket.close(1000, 'receiver closed');
         };
       };
       startSocket();

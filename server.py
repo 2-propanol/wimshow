@@ -1,39 +1,73 @@
-import cv2
-import binascii
-import numpy as np
-from tqdm import trange
-
 import asyncio
+from asyncio.exceptions import TimeoutError
 import websockets
 
+from websockets.exceptions import ConnectionClosedOK
 
-width = 1280
-height = 720
+MAX_RECEIVERS = 32
+MAX_SENDERS = 1
+receivers = set()
+senders = set()
 
-def img_to_uri(image):
-    # _, b64_image = cv2.imencode(".bmp", image)
-    _, b64_image = cv2.imencode(".png", image, (cv2.IMWRITE_PNG_COMPRESSION, 0))
-    # _, b64_image = cv2.imencode(".png", image, ((cv2.IMWRITE_PNG_COMPRESSION, 0, cv2.IMWRITE_PNG_BILEVEL, 1)))
-    b64_str_image = binascii.b2a_base64(b64_image).decode("ascii")
-    # image_url = f"url(data:image/bmp;base64,{b64_str_image})"
-    image_url = f"url(data:image/png;base64,{b64_str_image})"
-    return image_url
 
-async def imshow(websocket, path) -> None:
-    print("net client")
+async def serve_imshow(socket, path) -> None:
+    try:
+        clientType = await asyncio.wait_for(socket.recv(), 5)
+    except TimeoutError:
+        await socket.close(1000, "timed out")
 
-    for _ in trange(120):
-        # await websocket.send(img_to_uri(np.random.randint(0,2,(height, width), dtype=np.uint8)))
-        await websocket.send(img_to_uri(np.random.randint(0,255,(height, width, 3), dtype=np.uint8)))
+    if clientType == "sender":
+        if len(senders) < MAX_SENDERS:
+            senders.add(socket)
+            try:
+                while True:
+                    image_url = await socket.recv()
+                    if receivers:
+                        await asyncio.wait(
+                            [
+                                asyncio.create_task(receiver.send(image_url))
+                                for receiver in receivers
+                            ]
+                        )
+            except ConnectionClosedOK:
+                pass
+            finally:
+                senders.remove(socket)
+        else:
+            socket.close(1000, "senders is full")
 
-        # data = await websocket.recv()
-        # print("receive : " + data)
+    elif clientType == "receiver":
+        if len(receivers) < MAX_RECEIVERS:
+            receivers.add(socket)
+            try:
+                while True:
+                    response = await socket.recv()
+                    if senders:
+                        await asyncio.wait(
+                            [
+                                asyncio.create_task(sender.send(response))
+                                for sender in senders
+                            ]
+                        )
+            except ConnectionClosedOK:
+                pass
+            finally:
+                receivers.remove(socket)
+        else:
+            socket.clone(1000, "receivers is full")
+    else:
+        await socket.close(1000, "unknown client type")
 
-    await asyncio.sleep(3)
-    await websocket.close()
 
-# disableing "Per-Message Deflate"
-start_server = websockets.serve(imshow, "0.0.0.0", 9998, compression=None)
-loop = asyncio.get_event_loop()
-loop.run_until_complete(start_server)
-loop.run_forever()
+def start_serve():
+    # disableing "Per-Message Deflate"
+    start_server = websockets.serve(
+        serve_imshow, "0.0.0.0", 9998, compression=None, max_size=8_388_608
+    )
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(start_server)
+    loop.run_forever()
+
+
+if __name__ == "__main__":
+    start_serve()
