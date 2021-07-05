@@ -6,11 +6,9 @@ authors = ["Your Name <you@example.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.7"
-opencv-python = "^4.5.2"
-matplotlib = "^3.4.2"
-PyQt5 = "^5.15.4"
-remi = "^2021.3.2"
-websockets = "^9.1"
+opencv-python = "^4.5"
+websockets = "^9"
+tqdm = "^4"
 
 [tool.poetry.dev-dependencies]
 black = "^21.6b0"

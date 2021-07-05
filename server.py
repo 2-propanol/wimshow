@@ -1,55 +1,39 @@
 import cv2
 import binascii
 import numpy as np
-import time
-
-width = 1280
-height = 720
-
-
-def str_to_uri(string):
-    image = np.fromfunction(
-        lambda y, x, c: 255 * (c == 0)
-        + x / width * 255 * (c == 1)
-        + y / height * 255 * (c == 2),
-        (height, width, 3),
-    ).astype(np.uint8)
-    cv2.putText(
-        image,
-        string,
-        (width // 4, height // 4 * 3),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        15,
-        (0, 255, 0),
-        8,
-        cv2.LINE_AA,
-    )
-
-    _, b64_image = cv2.imencode(".png", image)
-    b64_str_image = binascii.b2a_base64(b64_image).decode("ascii")
-    image_url = f"data:image/png;base64,{b64_str_image}"
-    return image_url
-
+from tqdm import trange
 
 import asyncio
 import websockets
 
 
-async def accept(websocket, path):
-    while True:
-        for i in range(10):
-            s = time.time()
+width = 1280
+height = 720
 
-            # print(f"message sent ({i})")
-            await websocket.send(str_to_uri(str(i)))
+def img_to_uri(image):
+    # _, b64_image = cv2.imencode(".bmp", image)
+    _, b64_image = cv2.imencode(".png", image, (cv2.IMWRITE_PNG_COMPRESSION, 0))
+    # _, b64_image = cv2.imencode(".png", image, ((cv2.IMWRITE_PNG_COMPRESSION, 0, cv2.IMWRITE_PNG_BILEVEL, 1)))
+    b64_str_image = binascii.b2a_base64(b64_image).decode("ascii")
+    # image_url = f"url(data:image/bmp;base64,{b64_str_image})"
+    image_url = f"url(data:image/png;base64,{b64_str_image})"
+    return image_url
 
-            data = await websocket.recv()
-            # print("receive : " + data)
+async def imshow(websocket, path) -> None:
+    print("net client")
 
-            f = time.time()
-            print(f"\r{1/(f-s):4.1f}fps", end="")
+    for _ in trange(120):
+        # await websocket.send(img_to_uri(np.random.randint(0,2,(height, width), dtype=np.uint8)))
+        await websocket.send(img_to_uri(np.random.randint(0,255,(height, width, 3), dtype=np.uint8)))
 
+        # data = await websocket.recv()
+        # print("receive : " + data)
 
-start_server = websockets.serve(accept, "localhost", 9998)
-asyncio.get_event_loop().run_until_complete(start_server)
-asyncio.get_event_loop().run_forever()
+    await asyncio.sleep(3)
+    await websocket.close()
+
+# disableing "Per-Message Deflate"
+start_server = websockets.serve(imshow, "0.0.0.0", 9998, compression=None)
+loop = asyncio.get_event_loop()
+loop.run_until_complete(start_server)
+loop.run_forever()
