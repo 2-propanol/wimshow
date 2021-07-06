@@ -14,13 +14,22 @@ from websockets.exceptions import ConnectionClosedOK
 
 
 def img_to_uri(image):
+    color_mode = "RGB"
+    if image.ndim == 2:
+        color_mode = "L"
     with BytesIO() as bs:
         # why reshaping: https://github.com/drj11/pypng/issues/105
         png.from_array(
-            image.reshape(image.shape[0], -1), mode="RGB", info={"compression": 0}
+            image.reshape(image.shape[0], -1), mode=color_mode, info={"compression": 0}
         ).write(bs)
         b64_str_image = binascii.b2a_base64(bs.getvalue()).decode("ascii")
     image_url = f"url(data:image/png;base64,{b64_str_image})"
+    return image_url
+
+
+def bytes_to_uri(image_bytes, filetype="png"):
+    b64_str_image = binascii.b2a_base64(image_bytes).decode("ascii")
+    image_url = f"url(data:image/{filetype};base64,{b64_str_image})"
     return image_url
 
 
@@ -93,6 +102,16 @@ class WimshowServer:
             for _ in range(num_receivers)
         ]
 
+    def imshow_bytes(self, image_bytes, filetype="png"):
+        self.__loop.run_until_complete(
+            self.__socket.send(bytes_to_uri(image_bytes, filetype))
+        )
+        num_receivers = int(self.__loop.run_until_complete(self.__socket.recv()))
+        return [
+            self.__loop.run_until_complete(self.__socket.recv())
+            for _ in range(num_receivers)
+        ]
+
     def __del__(self):
         if self.__socket:
             self.__loop.run_until_complete(self.__socket.close(1000, "closing sender"))
@@ -128,7 +147,6 @@ async def serve_imshow(socket, path) -> None:
                 image_url = await socket.recv()
                 await socket.send(str(len(receivers)))
                 if not receivers:
-                    await socket.send("no receivers")
                     continue
                 await asyncio.wait(
                     [
