@@ -5,18 +5,20 @@ import subprocess
 import sys
 import time
 from asyncio.exceptions import TimeoutError
+from io import BytesIO
 
-import cv2
+import png
 import websockets
 from websockets.exceptions import ConnectionClosedOK
 
 
 def img_to_uri(image):
-    # _, b64_image = cv2.imencode(".bmp", image)
-    _, b64_image = cv2.imencode(".png", image, (cv2.IMWRITE_PNG_COMPRESSION, 0))
-    # _, b64_image = cv2.imencode(".png", image, ((cv2.IMWRITE_PNG_COMPRESSION, 0, cv2.IMWRITE_PNG_BILEVEL, 1)))
-    b64_str_image = binascii.b2a_base64(b64_image).decode("ascii")
-    # image_url = f"url(data:image/bmp;base64,{b64_str_image})"
+    with BytesIO() as bs:
+        # why reshaping: https://github.com/drj11/pypng/issues/105
+        png.from_array(
+            image.reshape(image.shape[0], -1), mode="RGB", info={"compression": 0}
+        ).write(bs)
+        b64_str_image = binascii.b2a_base64(bs.getvalue()).decode("ascii")
     image_url = f"url(data:image/png;base64,{b64_str_image})"
     return image_url
 
@@ -137,16 +139,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--host",
-        type=str,
-        default="localhost",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=9998,
-    )
+    parser.add_argument("--host", type=str, default="localhost")
+    parser.add_argument("--port", type=int, default=9998)
     args = parser.parse_args()
 
     # disableing "Per-Message Deflate"

@@ -4,5 +4,4 @@
 
 ## TODO
 - serve http with Python(http.server)
-- faster png encode (cv2 vs Pillow vs PyPng)
 - documentation
