@@ -76,14 +76,22 @@ class WimshowServer:
             raise ConnectionError("failed to connect server")
 
     @property
-    def shape(self):
+    def shapes(self):
         self.__loop.run_until_complete(self.__socket.send("monitorInfoRequest"))
-        shape = json.loads(self.__loop.run_until_complete(self.__socket.recv()))
-        return shape["height"], shape["width"], 3
+        num_receivers = int(self.__loop.run_until_complete(self.__socket.recv()))
+        dicts = [
+            json.loads(self.__loop.run_until_complete(self.__socket.recv()))
+            for _ in range(num_receivers)
+        ]
+        return [(d["height"], d["width"], 3) for d in dicts]
 
     def imshow(self, image):
         self.__loop.run_until_complete(self.__socket.send(img_to_uri(image)))
-        return self.__loop.run_until_complete(self.__socket.recv())
+        num_receivers = int(self.__loop.run_until_complete(self.__socket.recv()))
+        return [
+            self.__loop.run_until_complete(self.__socket.recv())
+            for _ in range(num_receivers)
+        ]
 
     def __del__(self):
         if self.__socket:
@@ -118,6 +126,7 @@ async def serve_imshow(socket, path) -> None:
         try:
             while True:
                 image_url = await socket.recv()
+                await socket.send(str(len(receivers)))
                 if not receivers:
                     await socket.send("no receivers")
                     continue
