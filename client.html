@@ -20,10 +20,17 @@
         socket.onopen = () => socket.send('receiver');
 
         socket.onmessage = (message) => {
-          // `message.data` is `url(data:image/***;base64,***)`
-          // This code is vulnerable!
-          document.body.style.backgroundImage = message.data;
-          socket.send('rendered');
+          // const payload = JSON.parse(message.data)
+          if (message.data === 'monitorInfoRequest') {
+            socket.send(
+              JSON.stringify({ width: window.innerWidth, height: window.innerHeight })
+            );
+          } else {
+            // `payload.imageURI` is `url(data:image/***;base64,***)`
+            // This code is vulnerable!
+            document.body.style.backgroundImage = message.data;
+            socket.send('rendered');
+          }
         };
 
         socket.onclose = () => {

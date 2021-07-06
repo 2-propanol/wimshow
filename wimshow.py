@@ -1,5 +1,6 @@
 import asyncio
 import binascii
+import json
 import subprocess
 import sys
 import time
@@ -22,7 +23,7 @@ def img_to_uri(image):
 
 class WimshowServer:
     def __init__(
-        self, host: str = "localhost", port: int = 9998, do_serve: bool = True
+        self, host: str = "localhost", port: int = 9998, *, do_serve: bool = True
     ):
         url = f"ws://{host}:{port}"
         self.__process = None
@@ -45,6 +46,12 @@ class WimshowServer:
                 break
         if not self.__socket:
             raise ConnectionError("failed to connect server")
+
+    @property
+    def shape(self):
+        self.__loop.run_until_complete(self.__socket.send("monitorInfoRequest"))
+        shape = json.loads(self.__loop.run_until_complete(self.__socket.recv()))
+        return shape["height"], shape["width"], 3
 
     def imshow(self, image):
         self.__loop.run_until_complete(self.__socket.send(img_to_uri(image)))
@@ -82,7 +89,7 @@ async def serve_imshow(socket, path) -> None:
             while True:
                 image_url = await socket.recv()
                 if not receivers:
-                    await socket.send("no recievers")
+                    await socket.send("no receivers")
                     continue
                 await asyncio.wait(
                     [
@@ -115,10 +122,7 @@ async def serve_imshow(socket, path) -> None:
                 if not senders:
                     continue
                 await asyncio.wait(
-                    [
-                        asyncio.create_task(sender.send(response))
-                        for sender in senders
-                    ]
+                    [asyncio.create_task(sender.send(response)) for sender in senders]
                 )
         except ConnectionClosedOK:
             pass
