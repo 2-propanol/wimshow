@@ -6,6 +6,7 @@ import sys
 import time
 from asyncio.exceptions import TimeoutError
 from io import BytesIO
+from pathlib import Path
 
 import png
 import websockets
@@ -25,16 +26,41 @@ def img_to_uri(image):
 
 class WimshowServer:
     def __init__(
-        self, host: str = "localhost", port: int = 9998, *, do_serve: bool = True
+        self,
+        host: str = "localhost",
+        port: int = 9998,
+        *,
+        ws_serve: bool = True,
+        httpd_serve: bool = False,
     ):
         url = f"ws://{host}:{port}"
-        self.__process = None
+        self.__ws_process = None
+        self.__httpd_process = None
         self.__loop = asyncio.get_event_loop()
         self.__socket = None
-        if do_serve:
-            self.__process = subprocess.Popen(
+        if ws_serve:
+            self.__ws_process = subprocess.Popen(
                 [sys.executable, __file__, "--host", str(host), "--port", str(port)]
             )
+        dist_dir = Path(__file__).parent.joinpath("dist")
+        if port == 9998:
+            print(f"local access: file://{dist_dir}/index.html")
+        else:
+            print(f"local access: file://{dist_dir}/index.html?SocketUrl={url}")
+        if httpd_serve:
+            self.__httpd_process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "http.server",
+                    str(port + 1),
+                    "--bind",
+                    str(host),
+                    "--directory",
+                    str(dist_dir),
+                ]
+            )
+            print(f"remote access: http://{host}:{port+1}/index.html?SocketUrl={url}")
         for _ in range(3):
             try:
                 self.__socket = self.__loop.run_until_complete(websockets.connect(url))
@@ -62,8 +88,10 @@ class WimshowServer:
     def __del__(self):
         if self.__socket:
             self.__loop.run_until_complete(self.__socket.close(1000, "closing sender"))
-        if self.__process:
-            self.__process.terminate()
+        if self.__ws_process:
+            self.__ws_process.terminate()
+        if self.__httpd_process:
+            self.__httpd_process.terminate()
         self.__loop.close()
 
 
@@ -141,11 +169,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="localhost")
     parser.add_argument("--port", type=int, default=9998)
+    parser.add_argument(
+        "--use_deflate", action="store_true", help="use Per-Message Deflate"
+    )
     args = parser.parse_args()
 
+    compress = None
+    if args.use_deflate:
+        compress = "deflate"
     # disableing "Per-Message Deflate"
     start_server = websockets.serve(
-        serve_imshow, args.host, args.port, compression=None, max_size=8_388_608
+        serve_imshow, args.host, args.port, compression=compress, max_size=8_388_608
     )
     loop = asyncio.get_event_loop()
     try:
